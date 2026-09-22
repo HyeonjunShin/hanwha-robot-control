@@ -1,68 +1,37 @@
-#include <iostream>
-#include <thread>
-#include <chrono>
-
-#include <Eigen/Dense>
-#include <Eigen/Geometry>
-
-#include "clink_api_rpc_system.h"
-#include "clink_api_rpc.h"
-
-
-const std::string ip = "192.168.100.200";
-const CLINK_CBOX_MODEL	CBOX_MODEL_NAME = CLINK_CBOX_MODEL_3GEN;				// 펜턴트 버전
-const CLINK_ROBOT_MODEL ROBOT_MODEL_NAME = CLINK_ROBOT_MODEL_HCR14; 			// 로봇 종류
-
-const std::string		CLINK_CONFIG_FILE =  std::string(HANWHA_ROOT_PATH) + "/config/config_rpc.ini";
-uint32_t cbox_id;																// 로봇 컨트롤 박스 id;
-uint32_t robot_id;																// 로봇 id
-
-inline double deg2rad(double deg) {
-    return deg * M_PI / 180.0;
-}
+#include "ik_solver.h"
+#include "hanwha_robot.h"
 
 int main(){
-    CLINK_API_RESULT err_ret_val = CLINK_API_RESULT_OK;
-    err_ret_val = clink_rpc_system_cbox_connect(CLINK_CONFIG_FILE.c_str(), "192.168.100.200", &cbox_id);    
+    Hanwha hanwha_obj("192.168.100.200");
+    // hanwha_obj.conn_flange_shm("/flange_pose");
+    Robot::RobotKinematics kinematics;
 
-    //  제어SW 초기화
-    err_ret_val = clink_rpc_gen_system_create(cbox_id, "", CBOX_MODEL_NAME);
-    if (err_ret_val != CLINK_API_RESULT_OK && err_ret_val < CLINK_API_RESULT_WARNING_BEGIN) {
-        std::cout << "[Error] [HanwhaRobot] 제어SW 초기화 실패: " << err_ret_val << std::endl;
-        return false;
+    while (1){
+        std::array<double,6> angles = hanwha_obj.get_curr_joint_deg();
+        std::cout << angles[0] << std::endl 
+        << angles[1] << std::endl 
+        << angles[2] << std::endl 
+        << angles[3] << std::endl 
+        << angles[4] << std::endl 
+        << angles[5] << std::endl;
+
+        Robot::FKResult fk = kinematics.computeFK(angles);
+
+        // 펜던트와 1:1로 비교하기 위해 mm 단위로 출력
+        std::cout << "===========================================\n";
+        std::cout << "[입력 관절 각도 (deg)]\n"
+                  << "J0: " << angles[0] << ", J1: " << angles[1] << ", J2: " << angles[2] << "\n"
+                  << "J3: " << angles[3] << ", J4: " << angles[4] << ", J5: " << angles[5] << "\n\n";
+
+        std::cout << "[계산된 TCP 위치 (mm)] - 펜던트와 비교용\n"
+                  << "X: " << fk.position_mm.x() << " mm\n"
+                  << "Y: " << fk.position_mm.y() << " mm\n"
+                  << "Z: " << fk.position_mm.z() << " mm\n";
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-
-    // 제어권 획득
-    err_ret_val = clink_rpc_system_control_take(cbox_id);
-    if (err_ret_val != CLINK_API_RESULT_OK) {
-        std::cout << "[Error] [HanwhaRobot] 제어권 획득 실패" << std::endl;
-        return false;
-    }
-
-    // 로봇 생성
-    err_ret_val = clink_rpc_robot_create(cbox_id, ROBOT_MODEL_NAME, "", 0U, &robot_id);
-    if (err_ret_val != CLINK_API_RESULT_OK) {
-        std::cout << "[Error] [HanwhaRobot] 로봇 생성 실패" << std::endl;
-        return false;
-    }
-
-    // EtherCAT 상태 확인 및 대기
-    CLINK_ECAT_CONN_STATE ecat_stat = CLINK_ECAT_CONN_STATE_DISCONNECTED;
-    clink_rpc_cbox_ecat_connection_state_get(cbox_id, &ecat_stat);
-    if (CLINK_ECAT_CONN_STATE_CONNECTED != ecat_stat) {
-        char_t valid_event = -1;
-        clink_rpc_system_wait_event_group_subgroup(
-            cbox_id,
-            CLINK_EVENT_GRP_NOTIFICATION,
-            CLINK_EVENT_SUBGRP_NOTIFICATION_ECAT_CONNECTED,
-            1000000,
-            1,
-            &valid_event);
-    }
-
-    // 6. 자동 속도 조절 기능 ON
-    clink_rpc_robot_motion_auto_adjust_swith_set(cbox_id, robot_id, CLINK_SWITCH_ON);
-
+    // hanwha_obj.run();   
+    // hanwha_obj.disconnect();
     // // --- 설정된 각속도 및 각가속도 값 출력 ---
     // // clink_rpc_robot_safety_limit_joint_speed_max_set(cbox_id, robot_id, 0, 200);
     // // clink_rpc_robot_safety_limit_joint_speed_max_set(cbox_id, robot_id, 1, 200);
@@ -73,58 +42,6 @@ int main(){
 
 
     // std::cout << "\n[Info] [HanwhaRobot] --- 설정된 조인트 한계값 (Safety Limit) ---" << std::endl;
-
-
-    clink_float_t p_pos_x;
-    clink_float_t p_pos_y;
-    clink_float_t p_pos_z;
-    clink_float_t p_ort_x;
-    clink_float_t p_ort_y;
-    clink_float_t p_ort_z;
-    bool first_run = false;
-    while (1)
-    {
-        clink_rpc_robot_tcp_pose_actual_get(cbox_id, robot_id, &p_pos_x, &p_pos_y, &p_pos_z, &p_ort_x, &p_ort_y, &p_ort_z);
-
-        // Eigen 변환 행렬 생성
-        Eigen::Affine3d T = Eigen::Affine3d::Identity();
-        T.translation() << p_pos_x, p_pos_y, p_pos_z;
-
-        Eigen::Matrix3d R;
-        R = Eigen::AngleAxisd(deg2rad(p_ort_z), Eigen::Vector3d::UnitZ())
-        * Eigen::AngleAxisd(deg2rad(p_ort_y), Eigen::Vector3d::UnitY())
-        * Eigen::AngleAxisd(deg2rad(p_ort_x), Eigen::Vector3d::UnitX());
-
-        T.linear() = R;
-        Eigen::Matrix4d T_matrix = T.matrix();
-
-        // 두 번째 루프부터는 출력물 높이(총 5줄)만큼 커서를 위로 올려 덮어씁니다.
-        if (!first_run) {
-            std::cout << "\033[5A"; // 5줄 위로 이동
-        }
-        first_run = false;
-
-        // 1줄차: 원본 Pose 데이터
-        std::cout << "POS: [" << std::fixed << std::setprecision(2)
-                << p_pos_x << ", " << p_pos_y << ", " << p_pos_z << "] "
-                << "ORT: [" 
-                << p_ort_x << ", " << p_ort_y << ", " << p_ort_z << "]\033[K\n";
-
-        // 2~5줄차: 4x4 행렬 출력
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                std::cout << std::setw(10) << T_matrix(i, j) << " ";
-            }
-            std::cout << "\033[K\n"; // \033[K : 이전 출력의 잔여 문자 삭제
-        }
-
-        std::cout << std::flush; // 버퍼 비우기
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-
-
-
         
 
     // for (uint32_t i = 0; i < 6; i++) {
@@ -150,11 +67,12 @@ int main(){
 
 
     // CLINK_API_RESULT err_ret_val = clink_rpc_system_cbox_connect(CLINK_CONFIG_FILE.c_str(), ip_.c_str(), &cbox_id);
-    if (err_ret_val != CLINK_API_RESULT_OK) {
-        std::cout << "[Error] [HanwhaRobot] 컨트롤 박스 연결 실패: " << err_ret_val << std::endl;
-        return false;
-    }
+    // if (err_ret_val != CLINK_API_RESULT_OK) {
+        // std::cout << "[Error] [HanwhaRobot] 컨트롤 박스 연결 실패: " << err_ret_val << std::endl;
+        // return false;
+    // }
 
+    
 
     return 1;
 }
