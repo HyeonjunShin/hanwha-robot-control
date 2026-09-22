@@ -58,4 +58,5 @@ public:
     bool conn_flange_shm(const std::string &shm_name) override;
     void runner_shm(std::string shm_name);
     std::array<double, 6> get_curr_joint_deg();
+    std::array<double, 6> get_curr_tcp();
 };

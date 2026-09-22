@@ -214,25 +214,19 @@ void Hanwha::run(){
 
 }
 
-
-
 std::array<double, 6> Hanwha::get_curr_joint_deg()
 {
-    clink_float_t angle[6];
-    clink_rpc_robot_joint_angle_actual_get(cbox_id, robot_id, 0, &angle[0]);
-    clink_rpc_robot_joint_angle_actual_get(cbox_id, robot_id, 1, &angle[1]);
-    clink_rpc_robot_joint_angle_actual_get(cbox_id, robot_id, 2, &angle[2]);
-    clink_rpc_robot_joint_angle_actual_get(cbox_id, robot_id, 3, &angle[3]);
-    clink_rpc_robot_joint_angle_actual_get(cbox_id, robot_id, 4, &angle[4]);
-    clink_rpc_robot_joint_angle_actual_get(cbox_id, robot_id, 5, &angle[5]);
-
     std::array<double, 6> joint_deg;
-    joint_deg[0] = angle[0];
-    joint_deg[1] = angle[1];
-    joint_deg[2] = angle[2];
-    joint_deg[3] = angle[3];
-    joint_deg[4] = angle[4];
-    joint_deg[5] = angle[5];
+ 
+    for (int i = 0; i < 6; ++i) {
+        clink_rpc_robot_joint_angle_actual_get(cbox_id, robot_id, i, &joint_deg[i]);
+    }
 
     return joint_deg;
+}
+
+std::array<double, 6> Hanwha::get_curr_tcp(){
+    std::array<double, 6> tcp;
+    clink_rpc_robot_tcp_pose_actual_get(cbox_id, robot_id, &tcp[0], &tcp[1], &tcp[2], &tcp[3], &tcp[4], &tcp[5]);
+    return tcp;
 }

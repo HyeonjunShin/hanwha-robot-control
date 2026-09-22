@@ -8,25 +8,39 @@ int main(){
 
     while (1){
         std::array<double,6> angles = hanwha_obj.get_curr_joint_deg();
-        std::cout << angles[0] << std::endl 
-        << angles[1] << std::endl 
-        << angles[2] << std::endl 
-        << angles[3] << std::endl 
-        << angles[4] << std::endl 
-        << angles[5] << std::endl;
-
+        std::array<double, 6> tcp = hanwha_obj.get_curr_tcp();
         Robot::FKResult fk = kinematics.computeFK(angles);
 
-        // 펜던트와 1:1로 비교하기 위해 mm 단위로 출력
-        std::cout << "===========================================\n";
-        std::cout << "[입력 관절 각도 (deg)]\n"
-                  << "J0: " << angles[0] << ", J1: " << angles[1] << ", J2: " << angles[2] << "\n"
-                  << "J3: " << angles[3] << ", J4: " << angles[4] << ", J5: " << angles[5] << "\n\n";
+        double calc_fk[6] = {
+            fk.position_mm.x(),
+            fk.position_mm.y(),
+            fk.position_mm.z(),
+            0.0, 0.0, 0.0
+        };
+        std::cout << std::fixed << std::setprecision(3);
 
-        std::cout << "[계산된 TCP 위치 (mm)] - 펜던트와 비교용\n"
-                  << "X: " << fk.position_mm.x() << " mm\n"
-                  << "Y: " << fk.position_mm.y() << " mm\n"
-                  << "Z: " << fk.position_mm.z() << " mm\n";
+        std::cout << "\n+-------------------------------------------------------------------------+\n";
+        std::cout << "|                           HANWHA ROBOT STATUS                           |\n";
+        std::cout << "+---------+---------------+-----------+-----------------+-----------------+\n";
+        std::cout << "| Joint   | Angle (deg)   | TCP Axis  | Robot TCP       | Calc FK (mm)    |\n";
+        std::cout << "+---------+---------------+-----------+-----------------+-----------------+\n";
+
+        const char* tcp_labels[6] = {"X (mm)", "Y (mm)", "Z (mm)", "Rx (deg)", "Ry (deg)", "Rz (deg)"};
+
+        for (int i = 0; i < 6; ++i) {
+            std::cout << "| J" << (i + 1) << "      |"
+                    << std::right << std::setw(14) << angles[i] << " | "
+                    << std::left  << std::setw(9)  << tcp_labels[i] << " | "
+                    << std::right << std::setw(15) << tcp[i] << " | ";
+
+            if (i < 3) {
+                std::cout << std::right << std::setw(15) << calc_fk[i] << " |\n";
+            } else {
+                std::cout << std::right << std::setw(15) << "N/A" << " |\n";
+            }
+        }
+
+        std::cout << "+---------+---------------+-----------+-----------------+-----------------+\n\n";
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
